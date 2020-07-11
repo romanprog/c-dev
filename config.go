@@ -53,6 +53,7 @@ func getEnv(key string, defaultVal string) string {
 	return defaultVal
 }
 
+// TODO remove this
 func setGlobalBashEnv() error {
 	envFile := ".test-local/aws.conf.yaml"
 	var envs struct {

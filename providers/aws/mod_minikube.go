@@ -20,35 +20,36 @@ type Minikube struct {
 	config      minikubeVarsSpec
 	backendConf executor.BackendSpec
 	terraform   *executor.TerraformRunner
+	backendKey  string
+	moduleDir   string
 }
-
-const minikubeModulePath = "terraform/aws/vpc"
-const minikubeModuleBackendKey = "states/terraform-k8s.state"
 
 // NewMinikube create new minikube instance.
 func NewMinikube(providerConf providerConfSpec) (*Minikube, error) {
-	var bk Minikube
-	bk.backendConf = executor.BackendSpec{
+	var miniKube Minikube
+	miniKube.moduleDir = "terraform/aws/minikube"
+	miniKube.backendKey = "states/terraform-k8s.state"
+	miniKube.backendConf = executor.BackendSpec{
 		Bucket: providerConf.ClusterName,
-		Key:    minikubeModuleBackendKey,
+		Key:    miniKube.backendKey,
 		Region: providerConf.Region,
 	}
 	instanceType, ok := providerConf.Provisioner["instanceType"].(string)
 	if !ok {
 		return nil, fmt.Errorf("can't determinate instance type for minikube")
 	}
-	bk.config = minikubeVarsSpec{
+	miniKube.config = minikubeVarsSpec{
 		HostedZone:      fmt.Sprintf("%s.%s", providerConf.ClusterName, providerConf.Domain),
 		Region:          providerConf.Region,
 		ClusterName:     providerConf.ClusterName,
 		AwsInstanceType: instanceType,
 	}
 	var err error
-	bk.terraform, err = executor.NewTerraformRunner(minikubeModulePath)
+	miniKube.terraform, err = executor.NewTerraformRunner(miniKube.moduleDir)
 	if err != nil {
 		return nil, err
 	}
-	return &bk, nil
+	return &miniKube, nil
 }
 
 // Deploy - create vpc.
@@ -60,18 +61,19 @@ func (s *Minikube) Deploy() error {
 		return err
 	}
 	// Init terraform without backend speck.
-	s.terraform.Init(s.backendConf)
+	err = s.terraform.Init(s.backendConf)
 	if err != nil {
 		return err
 	}
 	// Plan.
-	s.terraform.Plan(s.config, "-compact-warnings", "-out=tfplan")
+	err = s.terraform.Plan(s.config, "-compact-warnings", "-out=tfplan")
 	if err != nil {
 		return err
 	}
 	// Apply. Create DNS.
 	err = s.terraform.ApplyPlan("tfplan", "-compact-warnings")
 	if err != nil {
+		log.Error("ERROR fuck")
 		return err
 	}
 	return nil
@@ -91,4 +93,9 @@ func (s *Minikube) Destroy() error {
 // Check - if s3 bucket exists.
 func (s *Minikube) Check() (bool, error) {
 	return true, nil
+}
+
+// ModulePath - if s3 bucket exists.
+func (s *Minikube) ModulePath() string {
+	return s.moduleDir
 }

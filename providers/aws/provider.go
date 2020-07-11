@@ -56,6 +56,7 @@ func (p *Provider) Init(yamlSpec []byte, clusterName string) error {
 // Deploy function.
 func (p *Provider) Deploy() error {
 	// Create bucket.
+	log.Info("Deploying backend bucket...")
 	backend, err := NewS3Backend(p.Config)
 	if err != nil {
 		return err
@@ -74,6 +75,7 @@ func (p *Provider) Deploy() error {
 	}
 
 	// Deploy DNS.
+	log.Info("Deploying Route53...")
 	route53, err := NewRoute53(p.Config)
 	if err != nil {
 		return err
@@ -84,8 +86,8 @@ func (p *Provider) Deploy() error {
 	}
 
 	// Deploy VPC.
+	log.Info("Deploying VPC...")
 	vpc, err := NewVpc(p.Config)
-
 	if err != nil {
 		return err
 	}
@@ -99,16 +101,13 @@ func (p *Provider) Deploy() error {
 
 		return err
 	}
-	provisioner.Deploy()
+	log.Info("Deploying provisioner...")
+	err = provisioner.Deploy(time.Minute * 5)
 	if err != nil {
 		return err
 	}
 	kubeConfig, err := provisioner.GetKubeConfig()
-	log.Debugf("%s", kubeConfig)
-	err = provisioner.WaitWithTimeout(time.Second * 120)
-	if err != nil {
-		return err
-	}
+	log.Debugf("Kubernetes config: \n %s", kubeConfig)
 	return nil
 }
 

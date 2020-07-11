@@ -47,3 +47,5 @@ override.tf.json
 # Ignore files with sensetive data
 tests/config.sh
 .test-local/**
+
+**/kubeconfig_*

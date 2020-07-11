@@ -24,17 +24,18 @@ type Eks struct {
 	config      eksVarsSpec
 	backendConf executor.BackendSpec
 	terraform   *executor.TerraformRunner
+	backendKey  string
+	moduleDir   string
 }
-
-const eksModulePath = "terraform/aws/eks"
-const eksModuleBackendKey = "states/terraform-k8s.state"
 
 // NewEks create new eks instance.
 func NewEks(providerConf providerConfSpec) (*Eks, error) {
 	var eks Eks
+	eks.moduleDir = "terraform/aws/eks"
+	eks.backendKey = "states/terraform-k8s.state"
 	eks.backendConf = executor.BackendSpec{
 		Bucket: providerConf.ClusterName,
-		Key:    eksModuleBackendKey,
+		Key:    eks.backendKey,
 		Region: providerConf.Region,
 	}
 	// TODO: Remove this hack.
@@ -61,7 +62,7 @@ func NewEks(providerConf providerConfSpec) (*Eks, error) {
 	eks.config.WorkerGroupsLaunchTemplate = providerConf.Provisioner["node_group"]
 
 	var err error
-	eks.terraform, err = executor.NewTerraformRunner(eksModulePath)
+	eks.terraform, err = executor.NewTerraformRunner(eks.moduleDir)
 	if err != nil {
 		return nil, err
 	}
@@ -112,5 +113,5 @@ func (s *Eks) Check() (bool, error) {
 
 // ModulePath - if s3 bucket exists.
 func (s *Eks) ModulePath() string {
-	return eksModulePath
+	return s.moduleDir
 }

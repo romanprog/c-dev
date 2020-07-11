@@ -7,10 +7,9 @@ import (
 
 // ProvisionerCommon - interface for all provisioners.
 type ProvisionerCommon interface {
-	Deploy() error
+	Deploy(time.Duration) error
 	Destroy() error
 	GetKubeConfig() (string, error)
-	WaitWithTimeout(timeout time.Duration) error
 }
 
 // NewProvisioner create new provisioner instance.
@@ -20,15 +19,16 @@ func NewProvisioner(conf providerConfSpec) (ProvisionerCommon, error) {
 	if !ok {
 		return nil, fmt.Errorf("can't determinate provisioner type")
 	}
+	var pv ProvisionerCommon
+	var err error
 	switch provisionerType {
 	case "minikube":
-		return nil, nil
+		pv, err = NewProvisionerMinikube(conf)
+		return pv, err
 	case "eks":
-		var pv ProvisionerCommon
-		pv, err := NewProvisionerEks(conf)
+		pv, err = NewProvisionerEks(conf)
 		return pv, err
 	default:
-
+		return nil, fmt.Errorf("unknown provisioner type '%s'", provisionerType)
 	}
-	return nil, fmt.Errorf("unknown provisioner type '%s'", provisionerType)
 }
