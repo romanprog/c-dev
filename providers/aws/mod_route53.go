@@ -58,12 +58,12 @@ func (r *Route53) Deploy() error {
 		return err
 	}
 	// Init terraform without backend speck.
-	r.terraform.Init(r.backendConf)
+	err = r.terraform.Init(r.backendConf)
 	if err != nil {
 		return err
 	}
 	// Plan.
-	r.terraform.Plan(r.config, "-compact-warnings", "-out=tfplan")
+	err = r.terraform.Plan(r.config, "-compact-warnings", "-out=tfplan")
 	if err != nil {
 		return err
 	}

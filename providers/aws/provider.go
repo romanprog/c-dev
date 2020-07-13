@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/apex/log"
-
 	"gopkg.in/yaml.v2"
 )
 
@@ -102,12 +101,29 @@ func (p *Provider) Deploy() error {
 		return err
 	}
 	log.Info("Deploying provisioner...")
-	err = provisioner.Deploy(time.Minute * 5)
+	err = provisioner.Deploy(time.Minute * 10) // Timeout - 10 min.
 	if err != nil {
 		return err
 	}
 	kubeConfig, err := provisioner.GetKubeConfig()
 	log.Debugf("Kubernetes config: \n %s", kubeConfig)
+	// Save kubeconfig to file.
+	// kubeConfigFileName := filepath.Join("~/.kube", "~/.kube/kubeconfig_"+p.Config.ClusterName)
+	// err = ioutil.WriteFile(kubeConfigFileName, []byte(kubeConfig), os.ModePerm)
+	// if err != nil {
+	// 	return err
+	// }
+	log.Info("Deploying addons...")
+	// Create addons instance.
+	addons, err := NewAddons(p.Config)
+	if err != nil {
+		return err
+	}
+	// Deploy addons.
+	err = addons.Deploy()
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -129,12 +145,29 @@ func (p *Provider) Destroy() error {
 		log.Infof("Backend bucket '%s' is not found. Nothing to destroy.", p.Config.ClusterName)
 		return nil
 	}
-	// Deploy kubernetes.
+
+	// Create provisioner instance.
 	provisioner, err := NewProvisioner(p.Config)
 	if err != nil {
-
 		return err
 	}
+	// Pull kubernetes config from s3 to ~/.kube/.
+	err = provisioner.PullKubeConfig()
+	if err != nil {
+		return err
+	}
+
+	// Create new addons instance.
+	addons, err := NewAddons(p.Config)
+	if err != nil {
+		return err
+	}
+	// Deploy addons.
+	err = addons.Destroy()
+	if err != nil {
+		return err
+	}
+
 	provisioner.Destroy()
 	if err != nil {
 		return err
@@ -159,7 +192,7 @@ func (p *Provider) Destroy() error {
 		return err
 	}
 
-	// Remove bucket.
+	// Remove bucket and dynamodb table.
 	err = backend.Destroy()
 	if err != nil {
 		return err

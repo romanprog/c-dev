@@ -56,12 +56,12 @@ func (s *Vpc) Deploy() error {
 		return err
 	}
 	// Init terraform without backend speck.
-	s.terraform.Init(s.backendConf)
+	err = s.terraform.Init(s.backendConf)
 	if err != nil {
 		return err
 	}
 	// Plan.
-	s.terraform.Plan(s.config, "-compact-warnings", "-out=tfplan")
+	err = s.terraform.Plan(s.config, "-compact-warnings", "-out=tfplan")
 	if err != nil {
 		return err
 	}

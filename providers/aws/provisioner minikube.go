@@ -12,22 +12,26 @@ import (
 
 // ProvisionerMinikube class.
 type ProvisionerMinikube struct {
-	providerConf   providerConfSpec
-	kubeConfig     string
-	minikubeModule *Minikube
+	providerConf           providerConfSpec
+	kubeConfig             string
+	kubeConfigName         string
+	kubeConfigFullFileName string
+	minikubeModule         *Minikube
 }
 
 // NewProvisionerMinikube create new instance of EKS provisioner.
 func NewProvisionerMinikube(providerConf providerConfSpec) (*ProvisionerMinikube, error) {
-	var provisioner ProvisionerMinikube
-	provisioner.providerConf = providerConf
+	var prv ProvisionerMinikube
+	prv.providerConf = providerConf
 	minikubeMod, err := NewMinikube(providerConf)
 	if err != nil {
 		return nil, err
 	}
 	// TODO check config.
-	provisioner.minikubeModule = minikubeMod
-	return &provisioner, nil
+	prv.minikubeModule = minikubeMod
+	prv.kubeConfigName = "kubeconfig_" + providerConf.ClusterName
+	prv.kubeConfigFullFileName = filepath.Join("/tmp/", prv.kubeConfigName)
+	return &prv, nil
 }
 
 // Deploy EKS provisioner modules, save kubernetes config to kubeConfig string.
@@ -37,13 +41,10 @@ func (p *ProvisionerMinikube) Deploy(timeout time.Duration) error {
 	if err != nil {
 		return err
 	}
-	// kube config file path.
-	kubeConfigFileName := "kubeconfig_" + p.providerConf.ClusterName
-	kubeConfigFile := filepath.Join(p.minikubeModule.ModulePath(), kubeConfigFileName)
 
 	// Init bash runner in module director and export path to kubeConfig.
-	varString := fmt.Sprintf("KUBECONFIG=%s", kubeConfigFile)
-	bash, err := executor.NewBashRunner(p.minikubeModule.ModulePath(), varString)
+	varString := fmt.Sprintf("KUBECONFIG=%s", p.kubeConfigFullFileName)
+	bash, err := executor.NewBashRunner("", varString)
 	if err != nil {
 		return err
 	}
@@ -59,21 +60,23 @@ func (p *ProvisionerMinikube) Deploy(timeout time.Duration) error {
 		// Wait for tick.
 		case <-tick:
 			// Download kube config (try)
-			downloadCommand := fmt.Sprintf("aws s3 cp 's3://%s/%s' '%s'", p.providerConf.ClusterName, kubeConfigFileName, kubeConfigFile)
+			downloadCommand := fmt.Sprintf("aws s3 cp s3://%s/%s %s", p.providerConf.ClusterName, p.kubeConfigName, p.kubeConfigFullFileName)
 			stdout, stderr, err := bash.RunMutely(downloadCommand)
 			if err != nil {
 				log.Info("Minikube cluster is not ready yet. Will retry after 5 seconds...")
 				continue
 			}
-			kubeconfig, err := ioutil.ReadFile(kubeConfigFile)
+			// Read kubeconfig from file.
+			kubeconfig, err := ioutil.ReadFile(p.kubeConfigFullFileName)
 			if err != nil {
 				return err
 			}
 			p.kubeConfig = string(kubeconfig)
-			//log.Debugf("Kubeconfig: %v", kubeconfig)
+			// check k8s access
 			stdout, stderr, err = bash.RunMutely("kubectl version --request-timeout=5s")
 			if err == nil {
 				// Connected! k8s is ready.
+				log.Debugf("Kubernetes cluster is ready: %s", stdout)
 				return nil
 			}
 			log.Info("Minikube cluster is not ready yet. Will retry after 5 seconds...")
@@ -99,4 +102,26 @@ func (p *ProvisionerMinikube) GetKubeConfig() (string, error) {
 		return "", fmt.Errorf("minikube kube config is empty")
 	}
 	return p.kubeConfig, nil
+}
+
+// PullKubeConfig download kubeconfig from s3 and save it to this.kubeConfig variable.
+func (p *ProvisionerMinikube) PullKubeConfig() error {
+	bash, err := executor.NewBashRunner("")
+	if err != nil {
+		return err
+	}
+	pullCommand := fmt.Sprintf("aws s3 cp s3://%s/%s %s", p.providerConf.ClusterName, p.kubeConfigName, p.kubeConfigFullFileName)
+	stdout, stderr, err := bash.RunMutely(pullCommand)
+	if err != nil {
+		log.Debugf("aws s3 cp output:\n%s\nError:\n%s", stdout, stderr)
+		return err
+	}
+	log.Debugf("Kubeconfig pulled. aws s3 cp output: \n%s", stdout)
+	kubeConfig, err := ioutil.ReadFile(p.kubeConfigFullFileName)
+	if err != nil {
+		return err
+	}
+	p.kubeConfig = string(kubeConfig)
+
+	return nil
 }

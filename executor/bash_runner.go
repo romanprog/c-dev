@@ -86,14 +86,15 @@ func NewBashRunner(workingDir string, envVariables ...string) (*BashRunner, erro
 	// Create runner.
 	runner := BashRunner{}
 	fi, err := os.Stat(workingDir)
-	if os.IsNotExist(err) {
-		return nil, fmt.Errorf("directory %s does not exist", workingDir)
+	if workingDir != "" {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("directory %s does not exist", workingDir)
+		}
+		if !fi.Mode().IsDir() {
+			return nil, fmt.Errorf("%s is not dir", workingDir)
+		}
 	}
-	if fi.Mode().IsDir() {
-		runner.workingDir = workingDir
-		runner.Env = envVariables
-		return &runner, nil
-	}
-	return nil, fmt.Errorf("%s is not dir", workingDir)
-
+	runner.workingDir = workingDir
+	runner.Env = envVariables
+	return &runner, nil
 }

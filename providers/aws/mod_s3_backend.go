@@ -50,7 +50,7 @@ func (s *S3Backend) Deploy() error {
 		return err
 	}
 	// Init terraform without backend speck.
-	s.terraform.Init(s.backendConf)
+	err = s.terraform.Init(s.backendConf)
 	if err != nil {
 		return err
 	}

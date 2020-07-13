@@ -3,6 +3,7 @@ package aws
 import (
 	"fmt"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -12,22 +13,26 @@ import (
 
 // ProvisionerEks class.
 type ProvisionerEks struct {
-	providerConf providerConfSpec
-	kubeConfig   string
-	eksModule    *Eks
+	providerConf           providerConfSpec
+	kubeConfig             string
+	kubeConfigName         string
+	kubeConfigFullFileName string
+	eksModule              *Eks
 }
 
 // NewProvisionerEks create new instance of EKS provisioner.
 func NewProvisionerEks(providerConf providerConfSpec) (*ProvisionerEks, error) {
-	var provisioner ProvisionerEks
-	provisioner.providerConf = providerConf
+	var prv ProvisionerEks
+	prv.providerConf = providerConf
 	eksMod, err := NewEks(providerConf)
 	if err != nil {
 		return nil, err
 	}
 	// TODO check config.
-	provisioner.eksModule = eksMod
-	return &provisioner, nil
+	prv.eksModule = eksMod
+	prv.kubeConfigName = "kubeconfig_" + providerConf.ClusterName
+	prv.kubeConfigFullFileName = filepath.Join("/tmp", prv.kubeConfigName)
+	return &prv, nil
 }
 
 // Deploy EKS provisioner modules, save kubernetes config to kubeConfig string.
@@ -37,21 +42,21 @@ func (p *ProvisionerEks) Deploy(timeout time.Duration) error {
 	if err != nil {
 		return err
 	}
-	// kube config file path.
-	kubeConfigFileName := "kubeconfig_" + p.providerConf.ClusterName
-	kubeConfigFile := filepath.Join(p.eksModule.ModulePath(), kubeConfigFileName)
 	// Read kube confin from file to string.
-	conf, err := ioutil.ReadFile(kubeConfigFile)
+	conf, err := ioutil.ReadFile(p.kubeConfigName)
 	if err != nil {
 		return err
 	}
 	p.kubeConfig = string(conf)
 
-	// Upload kube config to s3 bucket.
-
+	// Write kubeconfig to standart path.
+	err = ioutil.WriteFile(p.kubeConfigFullFileName, conf, os.ModePerm)
+	if err != nil {
+		return err
+	}
 	// Init bash runner in module director and export path to kubeConfig.
-	varString := fmt.Sprintf("KUBECONFIG=%s", kubeConfigFile)
-	bash, err := executor.NewBashRunner(p.eksModule.ModulePath(), varString)
+	varString := fmt.Sprintf("KUBECONFIG=%s", p.kubeConfigFullFileName)
+	bash, err := executor.NewBashRunner("", varString)
 	if err != nil {
 		return err
 	}
@@ -71,8 +76,7 @@ func (p *ProvisionerEks) Deploy(timeout time.Duration) error {
 			if err == nil {
 				// Connected! k8s is ready.
 				// Upload kubeConfig to s3
-				// https://golang.org/pkg/fmt/ (see "Explicit argument indexes")
-				uploadCommand := fmt.Sprintf("aws s3 cp '%[1]s' 's3://%[2]s/%[1]s", kubeConfigFileName, p.providerConf.ClusterName)
+				uploadCommand := fmt.Sprintf("aws s3 cp %s s3://%s/%s", p.kubeConfigFullFileName, p.providerConf.ClusterName, p.kubeConfigName)
 				return bash.Run(uploadCommand)
 			}
 			log.Debugf("%s %s", stdout, stderr)
@@ -97,4 +101,26 @@ func (p *ProvisionerEks) GetKubeConfig() (string, error) {
 		return "", fmt.Errorf("eks kube config is empty")
 	}
 	return p.kubeConfig, nil
+}
+
+// PullKubeConfig download kubeconfig from s3 and save it to this.kubeConfig variable.
+func (p *ProvisionerEks) PullKubeConfig() error {
+	bash, err := executor.NewBashRunner("")
+	if err != nil {
+		return err
+	}
+	pullCommand := fmt.Sprintf("aws s3 cp s3://%s/%s %s", p.providerConf.ClusterName, p.kubeConfigName, p.kubeConfigFullFileName)
+	stdout, stderr, err := bash.RunMutely(pullCommand)
+	if err != nil {
+		log.Debugf("aws s3 cp output:\n%s\nError:\n%s", stdout, stderr)
+		return err
+	}
+	log.Debugf("Kubeconfig pulled. aws s3 cp output: \n%s", stdout)
+	kubeConfig, err := ioutil.ReadFile(p.kubeConfigFullFileName)
+	if err != nil {
+		return err
+	}
+	p.kubeConfig = string(kubeConfig)
+
+	return nil
 }

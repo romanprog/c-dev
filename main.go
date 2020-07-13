@@ -8,8 +8,8 @@ import (
 )
 
 func main() {
-
 	// Init config (args)
+
 	globalConfigInit()
 	loggingInit()
 

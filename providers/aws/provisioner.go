@@ -10,6 +10,7 @@ type ProvisionerCommon interface {
 	Deploy(time.Duration) error
 	Destroy() error
 	GetKubeConfig() (string, error)
+	PullKubeConfig() error
 }
 
 // NewProvisioner create new provisioner instance.
